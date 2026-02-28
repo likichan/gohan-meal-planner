@@ -1,11 +1,7 @@
-import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { NextResponse } from 'next/server';
 
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
-
-const SYSTEM_PROMPT = `あなたは栄養士兼料理家です。一人暮らしの方のために、週7日分の夕食献立を考えてください。
+const PROMPT = `あなたは栄養士兼料理家です。一人暮らしの方のために、週7日分の夕食献立を考えてください。
 
 制約条件：
 - ナス、キノコ類（しいたけ・えのき・まいたけ・エリンギなど全種）、たけのこは絶対に使用しない
@@ -15,7 +11,8 @@ const SYSTEM_PROMPT = `あなたは栄養士兼料理家です。一人暮らし
 - 同じ食材をなるべく使い回して買い物の負担を減らす
 - 食材の保存方法も含めた買い物リストを作成する
 
-必ず以下のJSON形式で返してください。JSONのみを返し、前後に説明文は不要です：
+今週の夕食献立7日分と買い物リストを作成してください。
+必ず以下のJSON形式のみで返してください。前後に説明文・コードブロック記号は不要です：
 
 {
   "meals": [
@@ -50,38 +47,27 @@ const SYSTEM_PROMPT = `あなたは栄養士兼料理家です。一人暮らし
 }
 
 カテゴリーは「肉・魚」「野菜・果物」「豆腐・卵・乳製品」「調味料・乾物」「その他」のいずれかを使用してください。
-tagsは2〜3個で「和食」「洋食」「中華」「高タンパク」「低カロリー」「ヘルシー」「ボリューム」「時短」などを使用してください。`;
+tagsは2〜3個で「和食」「洋食」「中華」「高タンパク」「低カロリー」「ヘルシー」「ボリューム」「時短」などを使用してください。
+dayIndexは月曜日=0、火曜日=1、水曜日=2、木曜日=3、金曜日=4、土曜日=5、日曜日=6としてください。`;
 
 export async function POST() {
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!process.env.GEMINI_API_KEY) {
     return NextResponse.json(
-      { error: 'ANTHROPIC_API_KEY が設定されていません。' },
+      { error: 'GEMINI_API_KEY が設定されていません。Vercelの環境変数を確認してください。' },
       { status: 500 }
     );
   }
 
   try {
-    const message = await client.messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 8000,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: '今週の夕食献立7日分と買い物リストを作成してください。',
-        },
-      ],
-    });
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
-    const content = message.content[0];
-    if (content.type !== 'text') {
-      throw new Error('Unexpected response type');
-    }
+    const result = await model.generateContent(PROMPT);
+    const text = result.response.text().trim();
 
-    const text = content.text.trim();
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      throw new Error('JSON not found in response');
+      throw new Error('JSONが見つかりませんでした');
     }
 
     const parsed = JSON.parse(jsonMatch[0]);
